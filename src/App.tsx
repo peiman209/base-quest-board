@@ -104,134 +104,62 @@ function App() {
   }
 
   async function connectWallet() {
-    const ethereum = (window as any).ethereum;
+  const ethereum = (window as any).ethereum;
 
-    if (!ethereum) {
-      alert("Please install Rabby Wallet or MetaMask first.");
-      return;
-    }
-
-    try {
-      const accounts = await ethereum.request({
-        method: "eth_requestAccounts",
-      });
-
-      if (accounts?.length) {
-        setWallet(accounts[0]);
-      }
-    } catch {
-      alert("Wallet connection was cancelled.");
-    }
+  if (!ethereum) {
+    alert("Please install Rabby Wallet or MetaMask first.");
+    return;
   }
 
-  const shortWallet = wallet
-    ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}`
-    : "";
+  try {
+    const accounts = await ethereum.request({
+      method: "eth_requestAccounts",
+    });
 
-  return (
-    <main className="app">
-      <nav className="navbar">
-        <div className="brand">
-          <span className="brand-icon">🔵</span>
-          <span>BASE QUEST BOARD</span>
-        </div>
+    if (!accounts?.length) return;
 
-        <button className="wallet-button" onClick={connectWallet}>
-          {wallet ? shortWallet : "Connect Wallet"}
-        </button>
-      </nav>
+    const walletAddress = accounts[0].toLowerCase();
 
-      <section className="hero">
-        <div className="eyebrow">YOUR DAILY MISSION ON BASE</div>
-        <h1>
-          Explore. Complete.
-          <br />
-          <span>Earn Points.</span>
-        </h1>
-        <p>
-          Complete daily quests, build your streak, and climb the Base
-          community leaderboard.
-        </p>
-      </section>
+    const nonceResponse = await fetch(
+      `/api/nonce?wallet=${walletAddress}`
+    );
 
-      <section className="stats">
-        <div className="stat-card">
-          <span>Total Points</span>
-          <strong>{saved.points.toLocaleString()}</strong>
-          <small>Your earned points</small>
-        </div>
+    if (!nonceResponse.ok) {
+      throw new Error("Could not get sign-in nonce.");
+    }
 
-        <div className="stat-card">
-          <span>Current Streak</span>
-          <strong>🔥 {saved.streak} days</strong>
-          <small>Keep showing up</small>
-        </div>
+    const { nonce } = await nonceResponse.json();
 
-        <div className="stat-card">
-          <span>Completed Today</span>
-          <strong>{saved.claimed.length}/{quests.length}</strong>
-          <small>Daily missions</small>
-        </div>
-      </section>
+    const message =
+      `Sign in to Base Quest Board\n` +
+      `Wallet: ${walletAddress}\n` +
+      `Nonce: ${nonce}`;
 
-      <section className="section">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">DAILY MISSIONS</span>
-            <h2>Today's Quests</h2>
-          </div>
-          <span className="date-label">{new Date().toDateString()}</span>
-        </div>
+    const signature = await ethereum.request({
+      method: "personal_sign",
+      params: [message, accounts[0]],
+    });
 
-        <div className="quest-grid">
-          {quests.map((quest) => {
-            const isClaimed = saved.claimed.includes(quest.id);
+    const verifyResponse = await fetch("/api/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        wallet: walletAddress,
+        signature,
+      }),
+    });
 
-            return (
-              <article className="quest-card" key={quest.id}>
-                <div className="quest-top">
-                  <span className="quest-icon">{quest.icon}</span>
-                  <span className="points">+{quest.points} PTS</span>
-                </div>
+    const result = await verifyResponse.json();
 
-                <h3>{quest.title}</h3>
-                <p>{quest.description}</p>
+    if (!verifyResponse.ok || !result.success) {
+      throw new Error(result.error || "Wallet verification failed.");
+    }
 
-                <button
-                  className={isClaimed ? "claim-button claimed" : "claim-button"}
-                  disabled={isClaimed}
-                  onClick={() => claimQuest(quest)}
-                >
-                  {isClaimed ? "✓ Completed" : "Claim Reward"}
-                </button>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="section leaderboard">
-        <div>
-          <span className="eyebrow">COMMUNITY</span>
-          <h2>Leaderboard</h2>
-          <p>
-            The community leaderboard will become available when shared
-            user data is connected.
-          </p>
-        </div>
-
-        <div className="leaderboard-placeholder">
-          <span>🏆</span>
-          <strong>Coming Soon</strong>
-          <small>Be among the first explorers.</small>
-        </div>
-      </section>
-
-      <footer>
-        Built for the Base community · Not affiliated with Coinbase
-      </footer>
-    </main>
-  );
+    setWallet(walletAddress);
+    alert("Wallet verified successfully!");
+  } catch (error: any) {
+    alert(error.message || "Wallet connection or verification failed.");
+  }
 }
-
-export default App;
