@@ -46,9 +46,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    await env.DB.prepare("DELETE FROM nonces WHERE nonce = ?")
-      .bind(nonceRow.nonce)
-      .run();
+    const consumed = await env.DB.prepare(
+  "DELETE FROM nonces WHERE nonce = ? AND wallet_address = ? AND created_at >= datetime('now', '-5 minutes')"
+)
+  .bind(nonceRow.nonce, wallet)
+  .run();
+
+if (consumed.meta.changes !== 1) {
+  return Response.json(
+    { error: "Nonce already used or expired" },
+    { status: 401 }
+  );
+}
 
     await env.DB.prepare(
       "INSERT OR IGNORE INTO users (wallet_address) VALUES (?)"
