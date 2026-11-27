@@ -74,6 +74,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
   }, [saved]);
+  useEffect(() => {
+  fetch("/api/me")
+    .then(async (res) => {
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.authenticated && data.wallet) {
+        setWallet(data.wallet);
+      }
+    })
+    .catch(() => {});
+}, []);
 
   function claimQuest(quest: Quest) {
     if (saved.claimed.includes(quest.id)) return;
