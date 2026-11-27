@@ -11,10 +11,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     );
 
     if (!match) {
-      return Response.json(
-        { authenticated: false },
-        { status: 401 }
-      );
+      return Response.json({ authenticated: false }, { status: 401 });
     }
 
     const token = match[1];
@@ -29,10 +26,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       .first<{ wallet_address: string }>();
 
     if (!session) {
-      return Response.json(
-        { authenticated: false },
-        { status: 401 }
-      );
+      return Response.json({ authenticated: false }, { status: 401 });
     }
 
     const wallet = session.wallet_address;
@@ -49,7 +43,17 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     const todayClaims = await env.DB.prepare(
       `SELECT quest_id FROM quest_claims
        WHERE wallet_address = ?
-       AND claim_date = ?`
+       AND claim_date = ?
+       AND status = 'approved'`
+    )
+      .bind(wallet, today)
+      .all<{ quest_id: string }>();
+
+    const todayPending = await env.DB.prepare(
+      `SELECT quest_id FROM quest_claims
+       WHERE wallet_address = ?
+       AND claim_date = ?
+       AND status = 'pending'`
     )
       .bind(wallet, today)
       .all<{ quest_id: string }>();
@@ -57,6 +61,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     const history = await env.DB.prepare(
       `SELECT DISTINCT claim_date FROM quest_claims
        WHERE wallet_address = ?
+       AND status = 'approved'
        ORDER BY claim_date DESC
        LIMIT 400`
     )
@@ -76,9 +81,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 
     let streak = 0;
 
-    while (
-      claimDates.has(currentDate.toISOString().slice(0, 10))
-    ) {
+    while (claimDates.has(currentDate.toISOString().slice(0, 10))) {
       streak++;
       currentDate.setUTCDate(currentDate.getUTCDate() - 1);
     }
@@ -87,9 +90,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       authenticated: true,
       wallet,
       points: user?.total_points ?? 0,
-      claimed: (todayClaims.results || []).map(
-        (item) => item.quest_id
-      ),
+      claimed: (todayClaims.results || []).map((item) => item.quest_id),
+      pending: (todayPending.results || []).map((item) => item.quest_id),
       streak,
     });
 
