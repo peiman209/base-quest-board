@@ -100,9 +100,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     );
 
   } catch (error) {
-    return Response.json(
-      { error: "Signature verification failed" },
-      { status: 401 }
-    );
-  }
+  return Response.json(
+    {
+      error: "Signature verification failed",
+      details: error instanceof Error ? error.message : String(error),
+    },
+    { status: 401 }
+  );
+}
 };
