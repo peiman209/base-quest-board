@@ -103,6 +103,7 @@ function App() {
   const [points, setPoints] = useState(0);
   const [streak, setStreak] = useState(0);
   const [claimed, setClaimed] = useState<string[]>([]);
+  const [pending, setPending] = useState<string[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [claiming, setClaiming] = useState("");
   const [loading, setLoading] = useState(true);
