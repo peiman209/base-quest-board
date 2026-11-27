@@ -126,6 +126,7 @@ function App() {
         setPoints(data.points || 0);
         setStreak(data.streak || 0);
         setClaimed(data.claimed || []);
+        setPending(data.pending || []);
       }
     } catch {
       console.error("Could not load profile.");
