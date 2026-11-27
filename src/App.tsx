@@ -223,46 +223,57 @@ const signature = await ethereum.request({
     }
   }
 
-  async function claimQuest(quest: Quest) {
-    if (!wallet) {
-      alert("Please connect your wallet first.");
-      return;
-    }
-
-    if (claimed.includes(quest.id) || claiming) return;
-
-    setClaiming(quest.id);
-
-    try {
-      const response = await fetch("/api/claim", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          questId: quest.id,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Could not claim quest.");
-      }
-
-      setPoints(data.totalPoints);
-      setClaimed((previous) => [...previous, quest.id]);
-
-      await loadProfile();
-      await loadLeaderboard();
-
-      alert(`Success! You earned ${data.points} points.`);
-    } catch (error: any) {
-      alert(error.message || "Could not claim quest.");
-    } finally {
-      setClaiming("");
-    }
+  
+async function claimQuest(quest: Quest) {
+  if (!wallet) {
+    alert("Please connect your wallet first.");
+    return;
   }
+
+  if (claimed.includes(quest.id) || pending.includes(quest.id) || claiming) return;
+
+  const proof = window.prompt(
+    "Paste the link or describe how you completed this quest:"
+  );
+
+  if (proof === null) return;
+
+  if (!proof.trim() || proof.trim().length > 1000) {
+    alert("Please enter valid proof (maximum 1000 characters).");
+    return;
+  }
+
+  setClaiming(quest.id);
+
+  try {
+    const response = await fetch("/api/claim", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        questId: quest.id,
+        proof: proof.trim(),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Could not submit quest.");
+    }
+
+    setPending((previous) => [...previous, quest.id]);
+
+    await loadProfile();
+
+    alert("Your quest has been submitted for review. Points will be added after approval.");
+  } catch (error: any) {
+    alert(error.message || "Could not submit quest.");
+  } finally {
+    setClaiming("");
+  }
+}
 
   const shortWallet = wallet
     ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}`
