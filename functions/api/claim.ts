@@ -14,6 +14,16 @@ export const onRequestPost: PagesFunction<Env> = async ({
   request,
   env,
 }) => {
+  const origin = request.headers.get("Origin");
+  const requestOrigin = new URL(request.url).origin;
+
+  if (!origin || origin !== requestOrigin) {
+    return Response.json(
+      { error: "Unauthorized origin." },
+      { status: 403 }
+    );
+  }
+
   try {
     // 1. Validate session cookie
     const cookie = request.headers.get("Cookie") || "";
