@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react";
+import { hexlify, toUtf8Bytes } from "ethers";
 
 type Quest = {
   id: string;
