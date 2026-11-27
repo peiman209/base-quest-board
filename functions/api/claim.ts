@@ -25,7 +25,6 @@ export const onRequestPost: PagesFunction<Env> = async ({
   }
 
   try {
-    // 1. Validate session cookie
     const cookie = request.headers.get("Cookie") || "";
     const match = cookie.match(
       /(?:^|;\s*)__Host-bqb_session=([a-f0-9]{64})(?:;|$)/
@@ -40,7 +39,6 @@ export const onRequestPost: PagesFunction<Env> = async ({
 
     const token = match[1];
 
-    // 2. Verify session in database
     const session = await env.DB.prepare(
       `SELECT wallet_address FROM sessions
        WHERE token = ?
@@ -57,12 +55,15 @@ export const onRequestPost: PagesFunction<Env> = async ({
       );
     }
 
-    // 3. Validate quest ID
     const body = await request.json() as {
       questId?: string;
+      proof?: string;
     };
 
     const questId = body.questId;
+    const proof = typeof body.proof === "string"
+      ? body.proof.trim()
+      : "";
 
     if (
       typeof questId !== "string" ||
@@ -74,68 +75,45 @@ export const onRequestPost: PagesFunction<Env> = async ({
       );
     }
 
-    const wallet = session.wallet_address;
-    const points = QUESTS[questId];
-
-    // Use UTC date consistently
-    const claimDate = new Date().toISOString().slice(0, 10);
-
-    // 4. Atomically claim quest and update points
-    const results = await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO quest_claims
-         (wallet_address, quest_id, points, claim_date)
-         VALUES (?, ?, ?, ?)`
-      ).bind(wallet, questId, points, claimDate),
-
-      env.DB.prepare(
-        `UPDATE users
-         SET total_points = total_points + ?
-         WHERE wallet_address = ?`
-      ).bind(points, wallet),
-    ]);
-
-    // 5. Confirm both operations succeeded
-    if (
-      results[0].meta.changes !== 1 ||
-      results[1].meta.changes !== 1
-    ) {
+    if (!proof || proof.length > 1000) {
       return Response.json(
-        { error: "Quest could not be claimed." },
-        { status: 409 }
+        { error: "Please provide valid proof (max 1000 characters)." },
+        { status: 400 }
       );
     }
 
-    // 6. Return updated total
-    const user = await env.DB.prepare(
-      `SELECT total_points
-       FROM users
-       WHERE wallet_address = ?`
+    const wallet = session.wallet_address;
+    const points = QUESTS[questId];
+    const claimDate = new Date().toISOString().slice(0, 10);
+
+    await env.DB.prepare(
+      `INSERT INTO quest_claims
+       (wallet_address, quest_id, points, claim_date, status, proof)
+       VALUES (?, ?, ?, ?, 'pending', ?)`
     )
-      .bind(wallet)
-      .first<{ total_points: number }>();
+      .bind(wallet, questId, points, claimDate, proof)
+      .run();
 
     return Response.json({
       success: true,
       questId,
-      points,
-      totalPoints: user?.total_points ?? points,
+      status: "pending",
+      message: "Your quest submission is waiting for review.",
     });
 
   } catch (error) {
-    // Unique constraint means this quest was already claimed today
     if (
       error instanceof Error &&
       error.message.toLowerCase().includes("unique")
     ) {
       return Response.json(
-        { error: "Quest already completed today." },
+        { error: "You have already submitted this quest today." },
         { status: 409 }
       );
     }
 
     return Response.json(
-      { error: "Could not claim quest." },
+      { error: "Could not submit quest." },
       { status: 500 }
     );
   }
