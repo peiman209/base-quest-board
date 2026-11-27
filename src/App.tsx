@@ -46,7 +46,58 @@ const quests: Quest[] = [
     icon: "🤝",
   },
 ];
+async function getWalletProvider() {
+  const win = window as any;
 
+  const providers = [
+    ...(win.ethereum?.providers || []),
+    win.ethereum,
+    win.rabby?.ethereum,
+  ].filter(Boolean);
+
+  // اولویت با Rabby
+  const rabby = providers.find(
+    (provider: any) => provider.isRabby
+  );
+
+  if (rabby) return rabby;
+
+  // جست‌وجوی کیف پول از طریق EIP-6963
+  let announcedProvider: any = null;
+
+  const handler = (event: Event) => {
+    const detail = (event as CustomEvent).detail;
+
+    if (
+      detail?.info?.rdns === "io.rabby" ||
+      detail?.provider?.isRabby
+    ) {
+      announcedProvider = detail.provider;
+    }
+  };
+
+  window.addEventListener(
+    "eip6963:announceProvider",
+    handler
+  );
+
+  window.dispatchEvent(
+    new Event("eip6963:requestProvider")
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  window.removeEventListener(
+    "eip6963:announceProvider",
+    handler
+  );
+
+  return (
+    announcedProvider ||
+    providers.find((provider: any) => provider.request) ||
+    null
+  );
+}
 function App() {
   const [wallet, setWallet] = useState("");
   const [points, setPoints] = useState(0);
@@ -102,15 +153,14 @@ function App() {
     initialize();
   }, []);
 
-  async function connectWallet() {
-    const ethereum = (window as any).ethereum;
+ async function connectWallet() {
+  try {
+    const ethereum = await getWalletProvider();
 
     if (!ethereum) {
-      alert("Please install Rabby Wallet or MetaMask first.");
+      alert("Please install or enable Rabby Wallet or MetaMask.");
       return;
     }
-
-    try {
       const accounts = await ethereum.request({
         method: "eth_requestAccounts",
       });
