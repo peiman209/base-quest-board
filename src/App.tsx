@@ -9,6 +9,12 @@ type Quest = {
   icon: string;
 };
 
+type LeaderboardEntry = {
+  rank: number;
+  wallet: string;
+  points: number;
+};
+
 const quests: Quest[] = [
   {
     id: "gm",
@@ -40,137 +46,302 @@ const quests: Quest[] = [
   },
 ];
 
-type SavedState = {
-  points: number;
-  streak: number;
-  claimed: string[];
-  lastClaimDate: string;
-};
-
-const STORAGE_KEY = "base-quest-board-v1";
-
-function getToday() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function App() {
-  const [saved, setSaved] = useState<SavedState>(() => {
-    try {
-      const value = localStorage.getItem(STORAGE_KEY);
-      return value
-        ? JSON.parse(value)
-        : { points: 0, streak: 0, claimed: [], lastClaimDate: "" };
-    } catch {
-      return { points: 0, streak: 0, claimed: [], lastClaimDate: "" };
-    }
-  });
-
   const [wallet, setWallet] = useState("");
+  const [points, setPoints] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [claimed, setClaimed] = useState<string[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [claiming, setClaiming] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
-  }, [saved]);
-  useEffect(() => {
-  fetch("/api/me")
-    .then(async (res) => {
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.authenticated && data.wallet) {
-        setWallet(data.wallet);
+  async function loadProfile() {
+    try {
+      const response = await fetch("/api/me");
+      if (!response.ok) {
+        setWallet("");
+        setPoints(0);
+        setStreak(0);
+        setClaimed([]);
+        return;
       }
-    })
-    .catch(() => {});
-}, []);
 
-  function claimQuest(quest: Quest) {
-    if (saved.claimed.includes(quest.id)) return;
+      const data = await response.json();
 
-    const date = getToday();
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const yesterdayKey = [
-      yesterday.getFullYear(),
-      String(yesterday.getMonth() + 1).padStart(2, "0"),
-      String(yesterday.getDate()).padStart(2, "0"),
-    ].join("-");
-
-    const newStreak =
-      saved.lastClaimDate === date
-        ? saved.streak
-        : saved.lastClaimDate === yesterdayKey
-          ? saved.streak + 1
-          : 1;
-
-    setSaved({
-      points: saved.points + quest.points,
-      streak: newStreak,
-      claimed: [...saved.claimed, quest.id],
-      lastClaimDate: date,
-    });
+      if (data.authenticated) {
+        setWallet(data.wallet || "");
+        setPoints(data.points || 0);
+        setStreak(data.streak || 0);
+        setClaimed(data.claimed || []);
+      }
+    } catch {
+      console.error("Could not load profile.");
+    }
   }
+
+  async function loadLeaderboard() {
+    try {
+      const response = await fetch("/api/leaderboard");
+      if (!response.ok) return;
+
+      const data = await response.json();
+      setLeaderboard(data.leaderboard || []);
+    } catch {
+      console.error("Could not load leaderboard.");
+    }
+  }
+
+  useEffect(() => {
+    async function initialize() {
+      await loadProfile();
+      await loadLeaderboard();
+      setLoading(false);
+    }
+
+    initialize();
+  }, []);
 
   async function connectWallet() {
-  const ethereum = (window as any).ethereum;
+    const ethereum = (window as any).ethereum;
 
-  if (!ethereum) {
-    alert("Please install Rabby Wallet or MetaMask first.");
-    return;
-  }
-
-  try {
-    const accounts = await ethereum.request({
-      method: "eth_requestAccounts",
-    });
-
-    if (!accounts?.length) return;
-
-    const walletAddress = accounts[0].toLowerCase();
-
-    const nonceResponse = await fetch(
-      `/api/nonce?wallet=${walletAddress}`
-    );
-
-    if (!nonceResponse.ok) {
-      throw new Error("Could not get sign-in nonce.");
+    if (!ethereum) {
+      alert("Please install Rabby Wallet or MetaMask first.");
+      return;
     }
 
-    const { nonce } = await nonceResponse.json();
+    try {
+      const accounts = await ethereum.request({
+        method: "eth_requestAccounts",
+      });
 
-    const message =
-      `Sign in to Base Quest Board\n` +
-      `Wallet: ${walletAddress}\n` +
-      `Nonce: ${nonce}`;
+      if (!accounts?.length) return;
 
-    const signature = await ethereum.request({
-      method: "personal_sign",
-      params: [message, accounts[0]],
-    });
+      const walletAddress = accounts[0].toLowerCase();
 
-    const verifyResponse = await fetch("/api/verify", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        wallet: walletAddress,
-        signature,
-      }),
-    });
+      const nonceResponse = await fetch(
+        `/api/nonce?wallet=${walletAddress}`
+      );
 
-    const result = await verifyResponse.json();
+      if (!nonceResponse.ok) {
+        throw new Error("Could not get sign-in nonce.");
+      }
 
-    if (!verifyResponse.ok || !result.success) {
-      throw new Error(result.error || "Wallet verification failed.");
+      const { nonce } = await nonceResponse.json();
+
+      const message =
+        `Sign in to Base Quest Board\n` +
+        `Wallet: ${walletAddress}\n` +
+        `Nonce: ${nonce}`;
+
+      const signature = await ethereum.request({
+        method: "personal_sign",
+        params: [message, accounts[0]],
+      });
+
+      const verifyResponse = await fetch("/api/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          wallet: walletAddress,
+          signature,
+        }),
+      });
+
+      const result = await verifyResponse.json();
+
+      if (!verifyResponse.ok || !result.success) {
+        throw new Error(result.error || "Wallet verification failed.");
+      }
+
+      await loadProfile();
+      await loadLeaderboard();
+
+      alert("Wallet verified successfully!");
+    } catch (error: any) {
+      alert(error.message || "Wallet connection or verification failed.");
+    }
+  }
+
+  async function claimQuest(quest: Quest) {
+    if (!wallet) {
+      alert("Please connect your wallet first.");
+      return;
     }
 
-    setWallet(walletAddress);
-    alert("Wallet verified successfully!");
-  } catch (error: any) {
-    alert(error.message || "Wallet connection or verification failed.");
+    if (claimed.includes(quest.id) || claiming) return;
+
+    setClaiming(quest.id);
+
+    try {
+      const response = await fetch("/api/claim", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          questId: quest.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not claim quest.");
+      }
+
+      setPoints(data.totalPoints);
+      setClaimed((previous) => [...previous, quest.id]);
+
+      await loadProfile();
+      await loadLeaderboard();
+
+      alert(`Success! You earned ${data.points} points.`);
+    } catch (error: any) {
+      alert(error.message || "Could not claim quest.");
+    } finally {
+      setClaiming("");
+    }
   }
+
+  const shortWallet = wallet
+    ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}`
+    : "";
+
+  return (
+    <main className="app">
+      <nav className="navbar">
+        <div className="brand">
+          <span className="brand-icon">🔵</span>
+          <span>BASE QUEST BOARD</span>
+        </div>
+
+        <button className="wallet-button" onClick={connectWallet}>
+          {wallet ? shortWallet : "Connect Wallet"}
+        </button>
+      </nav>
+
+      <section className="hero">
+        <div className="eyebrow">YOUR DAILY MISSION ON BASE</div>
+
+        <h1>
+          Explore. Complete.
+          <br />
+          <span>Earn Points.</span>
+        </h1>
+
+        <p>
+          Complete daily quests, build your streak, and climb the Base
+          community leaderboard.
+        </p>
+      </section>
+
+      <section className="stats">
+        <div className="stat-card">
+          <span>Total Points</span>
+          <strong>{points.toLocaleString()}</strong>
+          <small>Your earned points</small>
+        </div>
+
+        <div className="stat-card">
+          <span>Current Streak</span>
+          <strong>🔥 {streak} days</strong>
+          <small>Keep showing up</small>
+        </div>
+
+        <div className="stat-card">
+          <span>Completed Today</span>
+          <strong>{claimed.length}/{quests.length}</strong>
+          <small>Daily missions</small>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">DAILY MISSIONS</span>
+            <h2>Today's Quests</h2>
+          </div>
+
+          <span className="date-label">
+            {new Date().toDateString()}
+          </span>
+        </div>
+
+        <div className="quest-grid">
+          {quests.map((quest) => {
+            const isClaimed = claimed.includes(quest.id);
+            const isClaiming = claiming === quest.id;
+
+            return (
+              <article className="quest-card" key={quest.id}>
+                <div className="quest-top">
+                  <span className="quest-icon">{quest.icon}</span>
+                  <span className="points">+{quest.points} PTS</span>
+                </div>
+
+                <h3>{quest.title}</h3>
+                <p>{quest.description}</p>
+
+                <button
+                  className={
+                    isClaimed
+                      ? "claim-button claimed"
+                      : "claim-button"
+                  }
+                  disabled={isClaimed || !!claiming || loading}
+                  onClick={() => claimQuest(quest)}
+                >
+                  {isClaimed
+                    ? "✓ Completed"
+                    : isClaiming
+                      ? "Claiming..."
+                      : "Claim Reward"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="section leaderboard">
+        <div>
+          <span className="eyebrow">COMMUNITY</span>
+          <h2>Leaderboard</h2>
+          <p>
+            Explore the top members of the Base Quest Board community.
+          </p>
+        </div>
+
+        <div className="leaderboard-placeholder">
+          {loading ? (
+            <p>Loading leaderboard...</p>
+          ) : leaderboard.length === 0 ? (
+            <>
+              <span>🏆</span>
+              <strong>No explorers yet</strong>
+              <small>Be the first to earn points.</small>
+            </>
+          ) : (
+            leaderboard.map((user) => (
+              <div key={user.wallet}>
+                <strong>#{user.rank}</strong>
+                {" · "}
+                {user.wallet.slice(0, 6)}...{user.wallet.slice(-4)}
+                {" · "}
+                {user.points.toLocaleString()} PTS
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <footer>
+        Built for the Base community · Not affiliated with Coinbase
+      </footer>
+    </main>
+  );
 }
+
+export default App;
