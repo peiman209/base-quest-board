@@ -343,6 +343,7 @@ async function claimQuest(quest: Quest) {
           {quests.map((quest) => {
             const isClaimed = claimed.includes(quest.id);
             const isClaiming = claiming === quest.id;
+            const isPending = pending.includes(quest.id);
 
             return (
               <article className="quest-card" key={quest.id}>
