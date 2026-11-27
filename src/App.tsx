@@ -355,21 +355,27 @@ async function claimQuest(quest: Quest) {
                 <h3>{quest.title}</h3>
                 <p>{quest.description}</p>
 
-                <button
-                  className={
-                    isClaimed
-                      ? "claim-button claimed"
-                      : "claim-button"
-                  }
-                  disabled={isClaimed || !!claiming || loading}
-                  onClick={() => claimQuest(quest)}
-                >
-                  {isClaimed
-                    ? "✓ Completed"
-                    : isClaiming
-                      ? "Claiming..."
-                      : "Claim Reward"}
-                </button>
+                
+<button
+  className={
+    isClaimed
+      ? "claim-button claimed"
+      : isPending
+        ? "claim-button pending"
+        : "claim-button"
+  }
+  disabled={isClaimed || isPending || !!claiming || loading}
+  onClick={() => claimQuest(quest)}
+>
+  {isClaimed
+    ? "✓ Completed"
+    : isPending
+      ? "⏳ Pending Review"
+      : isClaiming
+        ? "Submitting..."
+        : "Submit Quest"}
+</button>
+
               </article>
             );
           })}
