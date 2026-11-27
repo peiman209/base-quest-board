@@ -134,10 +134,12 @@ function App() {
         `Wallet: ${walletAddress}\n` +
         `Nonce: ${nonce}`;
 
-      const signature = await ethereum.request({
-        method: "personal_sign",
-        params: [message, accounts[0]],
-      });
+      const hexMessage = hexlify(toUtf8Bytes(message));
+
+const signature = await ethereum.request({
+  method: "personal_sign",
+  params: [hexMessage, accounts[0]],
+});
 
       const verifyResponse = await fetch("/api/verify", {
         method: "POST",
