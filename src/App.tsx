@@ -155,8 +155,12 @@ const signature = await ethereum.request({
       const result = await verifyResponse.json();
 
       if (!verifyResponse.ok || !result.success) {
-        throw new Error(result.error || "Wallet verification failed.");
-      }
+  throw new Error(
+    `${result.error || "Wallet verification failed."} ${
+      result.details || ""
+    }`
+  );
+}
 
       await loadProfile();
       await loadLeaderboard();
